@@ -24,6 +24,7 @@ from .sampler.chat_completion_sampler import (
 from .sampler.o_chat_completion_sampler import OChatCompletionSampler
 from .sampler.responses_sampler import ResponsesSampler
 from .simpleqa_eval import SimpleQAEval
+from .sampler.local_sampler import LocalSampler
 
 
 def main():
@@ -234,12 +235,13 @@ def main():
         #     model="claude-3-haiku-20240307",
         # ),
         # Local models:
-        "local": ResponsesSampler(
+        "local": LocalSampler(
+            base_url="http://localhost:7004/v1",
             model="no-need",
+            api_key="no-need",
             system_message=OPENAI_SYSTEM_MESSAGE_API,
             max_tokens=2048,
-            reasoning_model=True,
-            base_url="http://localhost:65534/v1",
+            enable_thinking=True,
         ),
     }
 

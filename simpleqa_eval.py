@@ -132,6 +132,10 @@ class SimpleQAEval(Eval):
 
     def __call__(self, sampler: SamplerBase) -> EvalResult:
             def fn(row: dict):
+                sampler_response = None
+                grade_letter = None
+                actual_queried_prompt_messages = []
+                cache = {}
                 if self.cache_path:
                     cache_key = row.get("problem", "")
                     if os.path.exists(self.cache_path):
@@ -139,7 +143,8 @@ class SimpleQAEval(Eval):
                             cache = json.load(f)
                         if cache_key in cache:
                             data = cache[cache_key]
-                            sampler_response = data.get("sampler_response", None)
+                            response_text = data.get("response_text", None)
+                            actual_queried_prompt_messages = data.get("actual_queried_prompt_messages", [])
                             grade_letter = data.get("grade_letter", None)
                         
                 if not sampler_response:
@@ -148,24 +153,27 @@ class SimpleQAEval(Eval):
                     ]
                     sampler_response = sampler(prompt_messages)
                     response_text = sampler_response.response_text
+                    actual_queried_prompt_messages = sampler_response.actual_queried_message_list
 
                     if self.cache_path:
+                        os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
                         with open(self.cache_path, "w") as f:
                             cache[cache_key] = {
-                                "sampler_response": sampler_response,
+                                "response_text": response_text,
                                 "grade_letter": grade_letter
                             }
                             json.dump(cache, f)
 
-                actual_queried_prompt_messages = sampler_response.actual_queried_message_list
 
                 if not grade_letter:
                     grade_letter = self.grade_sample(row.get("problem", ""), row.get("answer", ""), response_text)
                      
                     if self.cache_path:
+                        os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
                         with open(self.cache_path, "w") as f:
                             cache[cache_key] = {
-                                "sampler_response": sampler_response,
+                                "response_text": response_text,
+                                "actual_queried_prompt_messages": actual_queried_prompt_messages,
                                 "grade_letter": grade_letter
                             }
                             json.dump(cache, f)

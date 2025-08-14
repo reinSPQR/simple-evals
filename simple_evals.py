@@ -60,6 +60,12 @@ def main():
     parser.add_argument(
         "--examples", type=int, help="Number of examples to use (overrides default)"
     )
+    parser.add_argument(
+        "--cache-path",
+        type=str,
+        default=None,
+        help="Path to cache file",
+    )
 
     args = parser.parse_args()
 
@@ -302,7 +308,8 @@ def main():
             case "simpleqa":
                 return SimpleQAEval(
                     grader_model=grading_sampler,
-                    num_examples=10 if debug_mode else num_examples,
+                    num_examples=1 if debug_mode else num_examples,
+                    cache_path=args.cache_path,
                 )
             case "browsecomp":
                 return BrowseCompEval(

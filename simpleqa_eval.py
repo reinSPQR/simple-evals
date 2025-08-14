@@ -4,6 +4,8 @@ Authors: Jason Wei, Nguyen Karina, Hyung Won Chung, Yunxin Joy Jiao, Spencer Pap
 https://cdn.openai.com/papers/simpleqa.pdf
 """ 
 
+import os
+import json
 import random 
 import re
 import pandas
@@ -97,7 +99,7 @@ CHOICE_STRINGS = ["CORRECT", "INCORRECT", "NOT_ATTEMPTED"]
 CHOICE_LETTER_TO_STRING = dict(zip(CHOICE_LETTERS, CHOICE_STRINGS))
 
 class SimpleQAEval(Eval):
-    def __init__(self, grader_model: SamplerBase, num_examples: int | None = None, n_repeats: int = 1):
+    def __init__(self, grader_model: SamplerBase, num_examples: int | None = None, n_repeats: int = 1, cache_path: str | None = None):
         df = pandas.read_csv(
             "https://openaipublic.blob.core.windows.net/simple-evals/simple_qa_test_set.csv"
         )
@@ -108,6 +110,7 @@ class SimpleQAEval(Eval):
             examples = rng.sample(examples, num_examples)
         self.examples = examples * n_repeats
         self.grader_model = grader_model
+        self.cache_path = cache_path
 
     def grade_sample(self, question: str, target: str, predicted_answer: str) -> str:
         grader_prompt = GRADER_TEMPLATE.format(
@@ -123,18 +126,50 @@ class SimpleQAEval(Eval):
         grading_response = sampler_response.response_text
         
         match = re.search(r"(A|B|C)", grading_response)
-        return match.group(0) if match else "C"  # Default to "NOT_ATTEMPTED" if no match
+        grade_result = match.group(0) if match else "C"  # Default to "NOT_ATTEMPTED" if no match
+
+        return grade_result
 
     def __call__(self, sampler: SamplerBase) -> EvalResult:
             def fn(row: dict):
-                prompt_messages = [
-                    sampler._pack_message(content=row.get("problem", ""), role="user")
-                ]
-                sampler_response = sampler(prompt_messages)
-                response_text = sampler_response.response_text
+                if self.cache_path:
+                    cache_key = row.get("problem", "")
+                    if os.path.exists(self.cache_path):
+                        with open(self.cache_path, "r") as f:
+                            cache = json.load(f)
+                        if cache_key in cache:
+                            data = cache[cache_key]
+                            sampler_response = data.get("sampler_response", None)
+                            grade_letter = data.get("grade_letter", None)
+                        
+                if not sampler_response:
+                    prompt_messages = [
+                        sampler._pack_message(content=row.get("problem", ""), role="user")
+                    ]
+                    sampler_response = sampler(prompt_messages)
+                    response_text = sampler_response.response_text
+
+                    if self.cache_path:
+                        with open(self.cache_path, "w") as f:
+                            cache[cache_key] = {
+                                "sampler_response": sampler_response,
+                                "grade_letter": grade_letter
+                            }
+                            json.dump(cache, f)
+
                 actual_queried_prompt_messages = sampler_response.actual_queried_message_list
-                grade_letter = self.grade_sample(row.get("problem", ""), row.get("answer", ""), response_text)
-                
+
+                if not grade_letter:
+                    grade_letter = self.grade_sample(row.get("problem", ""), row.get("answer", ""), response_text)
+                     
+                    if self.cache_path:
+                        with open(self.cache_path, "w") as f:
+                            cache[cache_key] = {
+                                "sampler_response": sampler_response,
+                                "grade_letter": grade_letter
+                            }
+                            json.dump(cache, f)
+
                 # Metrics based on grading response
                 is_correct = grade_letter == "A"
                 is_incorrect = grade_letter == "B"
